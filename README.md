@@ -1,0 +1,168 @@
+# Codex 今日用量显示
+
+把 Mac 上的 Codex 用量数据，常显在 **ZECTRIX NOTE4C 四色（黑/白/黄/红）墨水屏**上。
+
+设备端跑 TRMNL 固件，每 15 分钟自动醒来，从局域网内的自建服务器拉一张 400×300 的四色面板；内容没变就不刷屏，保护墨水屏寿命。
+
+```
+┌─────────────────────────┐        ┌──────────────────────────┐        ┌───────────────────┐
+│ Codex 用量监控服务       │  只读  │ Mac: BYOS + CodexPlugin  │  拉图  │ NOTE4C (TRMNL)    │
+│ 127.0.0.1:18741         │ ─────► │ 400×300 四色渲染          │ ◄───── │ 15min 轮询 + 深睡  │
+│ /api/snapshot           │        │ 4 色索引 PNG              │        │ SSD2683 BWRY 面板 │
+└─────────────────────────┘        └──────────────────────────┘        └───────────────────┘
+```
+
+---
+
+## 1. 屏幕显示内容
+
+```
+┌────────────────────────────────────────────────┐
+│ Codex 今日用量            11-26 更新 14:21     │  ← 黑底白字：本次刷新时刻
+├──────────────────────┬─────────────────────────┤
+│ Codex 本地            │ 飞书                    │
+│ 桌面应用运行中        │ 运行中·待确认            │
+│ 5.2M                 │ 61.6K                   │  ← 今日用量（与 Web 默认视图一致）
+│ 30天 79.4M           │ 30天 232.9K             │  ← 30 天累计下沉为辅助信息
+├──────────────────────┼─────────────────────────┤
+│ 企业微信              │ 今日合计（黄底强调）      │
+│ 运行中·待确认         │ 全部渠道                 │
+│ 72.0K                │ 5.3M                    │
+│ 30天 724.7K          │ 30天 80.4M              │
+├──────────────────────┴─────────────────────────┤
+│ 电量 ▪▪▪▪▪ 100%  WiFi ▪▪▪□□      数据 14:21    │  ← 黑底白字：设备状态 + 数据时间
+└────────────────────────────────────────────────┘
+```
+
+**色彩语义（全屏统一）**
+
+| 颜色 | 语义 |
+|------|------|
+| 黑 | 结构（标题栏、页脚、卡片边框、正常状态条） |
+| 白 | 背景 / 正常格 |
+| 黄 | 重点信息（今日合计卡片）+ 预警（电量/WiFi 仅剩 2 格） |
+| 红 | 告警（进程离线、重连中、电量/WiFi 仅剩 1 格、监控服务不可用） |
+
+**强度格换算**
+
+| 格数 | 电量 | WiFi | 颜色 |
+|------|------|------|------|
+| 5 | ≥81% | ≥-55dBm | 白 |
+| 4 | 61~80% | -56~-65 | 白 |
+| 3 | 41~60% | -66~-75 | 白 |
+| 2 | 21~40% | -76~-85 | **黄** |
+| 1 | ≤20% | < -85 | **红** |
+
+---
+
+## 2. 硬件与固件
+
+| 项 | 值 |
+|----|----|
+| 设备 | ZECTRIX NOTE4C（ESP32-S3 N16R8，16MB Flash，400×300 四色 SSD2683） |
+| 固件 | [atchoum31/trmnl-firmware-note4c](https://github.com/atchoum31/trmnl-firmware-note4c) `v1.8.19-note4c`（merged bin 刷 `0x0`） |
+| 上游 | [LitoMore/trmnl-firmware](https://github.com/LitoMore/trmnl-firmware) zectrix 分支 |
+| 按键 | 正面圆键 = 唤醒 + 立即拉图；左侧内凹 RESET 针孔 = 硬复位（电池供电也生效） |
+| 供电 | 自带电池，USB-C 充电；LED 绿=充满、闪=充电中 |
+
+**出厂/前代固件备份位于 `flash-backup/`（不入库）**，回退只需把备份写回 `0x0`。
+
+---
+
+## 3. Mac 端服务
+
+- 基础服务：[usetrmnl/byos_fastapi](https://github.com/usetrmnl/byos_fastapi)（FastAPI 实现的 TRMNL 设备 API）
+- 自定义插件：`plugin/codex.py` → 放进 `byos_fastapi/trmnl_server/plugins/codex.py`（自动注册）
+- 渲染核心：`renderer/note4c_render.py`（插件与独立推送脚本共用）
+- 进程托管：launchd `com.hunter.trmnl-server`（开机自启 + 崩溃拉起，`SERVER_PORT=4567`）
+
+**对 BYOS 的三处改动**（详见 `docs/BYOS-PATCHES.md`）：
+
+1. `/api/display` 的 filename token 改为**内容哈希驱动**（内容不变 → token 不变 → 设备跳过刷屏）
+2. 轮播条目代码级过滤，只留 `CodexPlugin`（播放列表 id 含动态后缀，重启后持久化会失配）
+3. 图片只走 PNG 通道（四色屏 BMP 通道为 1-bit + PARTIAL，静默失败）
+
+---
+
+## 4. 关键踩坑（都是实测血泪）
+
+| 现象 | 根因 | 解法 |
+|------|------|------|
+| 屏上四色面板刷不出来、也不报错 | 固件 BMP 通道按 1-bit 位图处理并只做 PARTIAL 刷新，四色屏上等于空操作 | 改走 **PNG 通道**（`png_to_epd → png_draw_4clr`，全刷） |
+| PNG 解码失败 `Four-color PNG decode failed: 8` | BYOS 默认输出**灰阶** PNG；失败后固件 framebuffer 未释放，后续刷新全部静默失效 | 自研 **4 色索引 PNG**（P 模式，调色板 = 黑/白/黄/红）；故障后按 RESET 针孔复位 |
+| 屏上突然出现 Bing 壁纸/XKCD 漫画 | 轮播列表被重置，设备在播其他插件 | 在 `state._select_next_playlist_entry` 中过滤，只留 Codex 条目 |
+| 每次轮询都整屏重刷 | filename token 含请求序号，永远在变 | token 改为内容签名，内容不变则跳过 |
+| 刷新后屏幕仍显示旧图 | 之前的失败路径污染了固件缓冲状态 | RESET 针孔硬复位清状态 |
+| 设备连不上服务器 | Mac 的 DHCP IP 从 `<MAC_IP>` 漂到 `<MAC_IP>` | 手工设静态 IP（`networksetup -setmanual`），并关闭「私有 Wi-Fi 地址」 |
+| 设备配网指向官方云，显示 MAC 未注册 | 新固件默认服务器是 `trmnl.app` | 擦 NVS（`0xE000, 0x5000`）重启进 captive portal，在高级页填自建服务器地址 |
+| WorkBuddy 沙箱内启动服务总报 `disk I/O error` | 沙箱拦截 SQLite journal 的创建/删除 | 改由 **launchd** 托管进程（完全脱离沙箱） |
+
+---
+
+## 5. 部署步骤（从零复现）
+
+```bash
+# 1) 基础服务
+cd server/byos_fastapi
+python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
+
+# 2) 放入插件（自动注册）
+cp ../../plugin/codex.py trmnl_server/plugins/codex.py
+# 按 docs/BYOS-PATCHES.md 应用三处改动
+
+# 3) 进程托管（plist 路径按实际修改）
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.hunter.trmnl-server.plist
+
+# 4) 验证
+curl -s http://127.0.0.1:4567/api/display -H "fw-version: 1.8.19" | python3 -m json.tool
+```
+
+设备侧：
+
+1. 刷 `zectrix-note4c-v1.8.19-merged-firmware.bin` 到 `0x0`
+2. 擦 NVS 强制进配网：`esptool --chip esp32s3 --port PORT erase-region 0xE000 0x5000`
+3. 连设备热点 → captive portal → 填 Wi-Fi + **高级页填服务器地址 `http://<Mac_IP>:4567`**
+4. 保存后设备自动注册并拉图
+
+---
+
+## 6. 运维手册
+
+| 场景 | 操作 |
+|------|------|
+| 立即刷新屏幕 | 短按正面圆键（唤醒 + 拉图） |
+| 屏幕卡住/脏屏 | 短按左侧 RESET 针孔（电池供电也生效） |
+| 改刷新周期 | `curl -X PATCH http://127.0.0.1:4567/devices/<MAC> -d '{"refresh_interval":900}' -H "Content-Type: application/json"` |
+| 看设备状态 | `curl http://127.0.0.1:4567/devices/<MAC>` |
+| 看错误日志 | `curl http://127.0.0.1:4567/server/log`（设备也会主动上报错误） |
+| 监控服务停了 | 屏幕自动变红色「监控服务离线」告警页 |
+
+---
+
+## 7. 已知限制
+
+- 设备 15 分钟上报一次，电量/WiFi 最多滞后 15 分钟
+- 四色面板每次全刷约 10-20 秒，刷新时屏幕会闪
+- 未显示充电状态（固件请求头有 `battery-charging`，BYOS 未落库）
+- 「运行中·待确认」= 监控服务只能确认进程存活、无法确认后端握手
+- 本仓库不含固件二进制与设备备份（体积大且含设备私有信息），需自行从上游获取
+
+## 8. 目录结构
+
+```
+Codex 今日用量显示/
+├── README.md               # 本文件
+├── renderer/               # 渲染核心 + 独立推送脚本（Plan A 备用）
+├── plugin/                 # BYOS 插件（CodexPlugin）
+├── docs/                   # 方案、操作手册、预研结论、BYOS 改动说明
+├── assets/                 # 面板预览图
+├── server/byos_fastapi/    # BYOS 服务（本地存档，不入库）
+├── firmware/               # 固件二进制（本地存档，不入库）
+├── flash-backup/           # 出厂/前代固件备份（本地存档，不入库）
+└── logs/                   # 服务日志（本地，不入库）
+```
+
+## License
+
+本项目代码（renderer / plugin / 文档）采用 MIT。依赖的上游项目各自遵循其许可证：
+BYOS FastAPI 见其仓库 LICENSE，TRMNL 固件为 GPL-3.0。
