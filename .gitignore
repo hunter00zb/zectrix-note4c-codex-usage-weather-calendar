@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# 本地服务运行时（DB/生成资产/日志）
+server/byos_fastapi/var/
+logs/
+*.log
+
+# 第三方/体积较大的本地存档（需自行获取或备份）
+server/byos_fastapi/
+firmware/
+flash-backup/
+
+# 归档与临时文件
+_archive_*/
+*.bin
