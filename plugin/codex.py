@@ -4,6 +4,7 @@
 """
 
 import logging
+import os
 import sys
 
 from PIL import Image
@@ -12,7 +13,8 @@ from .fourcolor_base import FourColorPanel
 
 logger = logging.getLogger(__name__)
 
-PROJECT_DIR = "/Users/hunter.zong/Work/Test Pj/NOTE4C/Codex 用量-日历-天气显示/renderer"
+PROJECT_DIR = os.getenv("NOTE4C_RENDERER_DIR") or os.path.abspath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "renderer"))
 if PROJECT_DIR not in sys.path:
     sys.path.insert(0, PROJECT_DIR)
 
