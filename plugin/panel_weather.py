@@ -1,7 +1,10 @@
-"""天气面板（NOTE4C 四色，400×300）.
+"""天气面板（NOTE4C 四色，400×300）—— 版式参照官方 NOTE4C 天气卡.
+
+结构：左侧大图标 + 超大温度；右侧日期/星期（红色强调）/天气/高低温；
+中部三张未来天气卡；底部黑色提醒条 + 设备状态条。
 
 数据源: open-meteo.com（免 API Key），默认长沙。
-可用环境变量覆盖: WEATHER_CITY / WEATHER_LAT / WEATHER_LON
+环境变量覆盖: WEATHER_CITY / WEATHER_LAT / WEATHER_LON
 """
 
 import datetime
@@ -28,17 +31,15 @@ CITY = os.getenv("WEATHER_CITY", "长沙")
 LAT = os.getenv("WEATHER_LAT", "28.23")
 LON = os.getenv("WEATHER_LON", "112.94")
 
-# WMO 天气码 → (中文描述, 用于强调的颜色)
+WEEKDAYS = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+
 WMO = {
-    0: ("晴", R.YELLOW), 1: ("晴间多云", R.YELLOW), 2: ("多云", R.BLACK), 3: ("阴", R.BLACK),
-    45: ("雾", R.BLACK), 48: ("雾凇", R.BLACK),
-    51: ("小毛毛雨", R.BLACK), 53: ("毛毛雨", R.BLACK), 55: ("大毛毛雨", R.BLACK),
-    61: ("小雨", R.BLACK), 63: ("中雨", R.BLACK), 65: ("大雨", R.RED),
-    66: ("冻雨", R.RED), 67: ("强冻雨", R.RED),
-    71: ("小雪", R.BLACK), 73: ("中雪", R.BLACK), 75: ("大雪", R.RED), 77: ("米雪", R.BLACK),
-    80: ("阵雨", R.BLACK), 81: ("强阵雨", R.BLACK), 82: ("暴雨", R.RED),
-    85: ("阵雪", R.BLACK), 86: ("强阵雪", R.RED),
-    95: ("雷阵雨", R.RED), 96: ("雷雨冰雹", R.RED), 99: ("强雷雨冰雹", R.RED),
+    0: "晴", 1: "晴间多云", 2: "多云", 3: "阴", 45: "雾", 48: "雾凇",
+    51: "毛毛雨", 53: "毛毛雨", 55: "大毛毛雨",
+    61: "小雨", 63: "中雨", 65: "大雨", 66: "冻雨", 67: "强冻雨",
+    71: "小雪", 73: "中雪", 75: "大雪", 77: "米雪",
+    80: "阵雨", 81: "强阵雨", 82: "暴雨", 85: "阵雪", 86: "强阵雪",
+    95: "雷阵雨", 96: "雷雨冰雹", 99: "强雷雨冰雹",
 }
 
 
@@ -56,75 +57,91 @@ def fetch_weather():
         return json.loads(resp.read())
 
 
+def _advice(data):
+    """底部黑色提醒条文案：返回 (前缀, 高亮词, 后缀)。"""
+    daily = data.get("daily", {})
+    codes = daily.get("weather_code") or []
+    highs = daily.get("temperature_2m_max") or []
+    lows = daily.get("temperature_2m_min") or []
+    rain_today = bool(codes) and int(codes[0] or 0) >= 51
+    rain_next = len(codes) > 1 and int(codes[1] or 0) >= 51
+    if rain_today:
+        return "提醒", "今天有雨", "· 出门记得带伞"
+    if rain_next:
+        return "提醒", "明天有雨", "· 提前备好雨具"
+    if highs and highs[0] is not None and highs[0] >= 33:
+        return "提醒", "高温天气", "· 注意防暑补水"
+    if lows and lows[0] is not None and lows[0] <= 2:
+        return "提醒", "气温偏低", "· 注意保暖"
+    return "提示", "适宜出行", "· 天气平稳"
+
+
 def render_weather(data, device_status=None):
     cur = data.get("current", {})
     daily = data.get("daily", {})
     temp = cur.get("temperature_2m")
     code = int(cur.get("weather_code") or 0)
-    desc, accent = WMO.get(code, ("未知", R.BLACK))
-    humidity = cur.get("relative_humidity_2m")
-    wind = cur.get("wind_speed_10m")
+    desc = WMO.get(code, "未知")
     hi = (daily.get("temperature_2m_max") or [None])[0]
     lo = (daily.get("temperature_2m_min") or [None])[0]
-    rain = (daily.get("precipitation_probability_max") or [None])[0]
-    updated = datetime.datetime.now().strftime("%H:%M")
+    now = datetime.datetime.now()
+    updated = now.strftime("%H:%M")
 
     img = Image.new("RGB", (R.W, R.H), R.WHITE)
     d = ImageDraw.Draw(img)
 
-    # 标题栏
-    d.rectangle([0, 0, R.W, 26], fill=R.BLACK)
-    d.text((10, 5), f"天气 · {CITY}", font=R.font(15, bold=True), fill=R.WHITE)
-    right = f"{datetime.datetime.now().strftime('%m-%d')} 更新 {updated}"
-    tw = d.textlength(right, font=R.font(12, bold=True))
-    d.text((R.W - 10 - tw, 7), right, font=R.font(12, bold=True), fill=R.WHITE)
+    # 顶部：标题 + 更新时间
+    d.text((8, 6), f"{CITY}天气", font=R.font(15, bold=True), fill=R.BLACK)
+    right = f"{now.strftime('%m-%d')} 更新 {updated}"
+    tw = d.textlength(right, font=R.font(11, bold=True))
+    d.text((R.W - 8 - tw, 8), right, font=R.font(11, bold=True), fill=R.BLACK)
 
-    # 当前温度（超大字）
-    temp_txt = f"{temp:.0f}°" if temp is not None else "--"
-    d.text((14, 34), temp_txt, font=R.font(64, bold=True), fill=R.BLACK)
-    temp_w = d.textlength(temp_txt, font=R.font(64, bold=True))
+    # 左侧：大图标 + 超大温度
+    R.draw_weather_icon(d, 72, 74, 96, code)
+    temp_txt = f"{temp:.0f}°" if temp is not None else "--°"
+    d.text((126, 34), temp_txt, font=R.font(58, bold=True), fill=R.BLACK)
 
-    # 天气描述：晴天用黄底强调
-    desc_x = 14 + temp_w + 12
-    if accent == R.YELLOW:
-        desc_w = d.textlength(desc, font=R.font(20, bold=True))
-        d.rectangle([desc_x - 6, 46, desc_x + desc_w + 6, 74], fill=R.YELLOW)
-        d.text((desc_x, 48), desc, font=R.font(20, bold=True), fill=R.BLACK)
-    else:
-        d.text((desc_x, 48), desc, font=R.font(20, bold=True), fill=accent)
+    # 右侧：日期 / 星期（红）/ 天气 / 高低温
+    col_x = 262
+    d.line([col_x - 12, 28, col_x - 12, 116], fill=R.BLACK, width=1)
+    d.text((col_x, 30), f"{now.month}月{now.day}日", font=R.font(15, bold=True), fill=R.BLACK)
+    d.text((col_x, 50), WEEKDAYS[now.weekday()], font=R.font(15, bold=True), fill=R.RED)
+    d.text((col_x, 76), desc, font=R.font(14, bold=True), fill=R.BLACK)
+    hl = f"高 {hi:.0f}°" if hi is not None else "高 --"
+    ll = f"低 {lo:.0f}°" if lo is not None else "低 --"
+    d.text((col_x, 96), f"{hl} | {ll}", font=R.font(13, bold=True), fill=R.BLACK)
 
-    # 今日详情
-    d.text((desc_x, 82), f"最高 {hi:.0f}°  最低 {lo:.0f}°" if hi is not None else "",
-           font=R.font(12, bold=True), fill=R.BLACK)
-    extra = []
-    if humidity is not None:
-        extra.append(f"湿度 {humidity:.0f}%")
-    if wind is not None:
-        extra.append(f"风 {wind:.0f}km/h")
-    if rain is not None:
-        extra.append(f"降水 {rain:.0f}%")
-    if extra:
-        d.text((desc_x, 100), "  ".join(extra), font=R.font(12, bold=True), fill=R.BLACK)
+    # 中线
+    d.line([8, 126, R.W - 8, 126], fill=R.BLACK, width=2)
 
-    # 分隔线
-    d.line([10, 122, R.W - 10, 122], fill=R.BLACK, width=2)
-
-    # 未来三天
+    # 中部：三天卡片
     dates = daily.get("time") or []
     codes = daily.get("weather_code") or []
     highs = daily.get("temperature_2m_max") or []
     lows = daily.get("temperature_2m_min") or []
-    label_map = {1: "明天", 2: "后天", 3: "大后天"}
-    for i in range(1, min(4, len(dates))):
-        y = 130 + (i - 1) * 48
-        label = label_map.get(i, dates[i][5:])
-        d.text((14, y + 2), label, font=R.font(14, bold=True), fill=R.BLACK)
+    labels = ["今天", "明天", "后天"]
+    card_w, card_h, gap = 122, 72, 8
+    for i in range(min(3, len(dates))):
+        x0 = 8 + i * (card_w + gap)
+        y0 = 134
+        d.rectangle([x0, y0, x0 + card_w, y0 + card_h], outline=R.BLACK, width=2)
+        d.text((x0 + 7, y0 + 4), labels[i], font=R.font(12, bold=True), fill=R.BLACK)
         c = int(codes[i]) if i < len(codes) and codes[i] is not None else 0
-        cdesc, cacc = WMO.get(c, ("未知", R.BLACK))
-        d.text((80, y + 2), cdesc, font=R.font(14, bold=True), fill=cacc)
-        rng = f"{lows[i]:.0f}° ~ {highs[i]:.0f}°" if i < len(lows) and i < len(highs) else "--"
-        rng_w = d.textlength(rng, font=R.font(14, bold=True))
-        d.text((R.W - 14 - rng_w, y + 2), rng, font=R.font(14, bold=True), fill=R.BLACK)
+        R.draw_weather_icon(d, x0 + 34, y0 + 44, 40, c)
+        h_txt = f"{highs[i]:.0f}°" if i < len(highs) and highs[i] is not None else "--"
+        l_txt = f"{lows[i]:.0f}°" if i < len(lows) and lows[i] is not None else "--"
+        d.text((x0 + 64, y0 + 22), h_txt, font=R.font(17, bold=True), fill=R.BLACK)
+        d.text((x0 + 64, y0 + 44), l_txt, font=R.font(14, bold=True), fill=R.BLACK)
+
+    # 底部黑色提醒条
+    d.rectangle([8, 214, R.W - 8, 272], fill=R.BLACK)
+    prefix, highlight, suffix = _advice(data)
+    x = 20
+    d.text((x, 229), prefix, font=R.font(13, bold=True), fill=R.YELLOW)
+    x += d.textlength(prefix, font=R.font(13, bold=True)) + 10
+    d.text((x, 227), highlight, font=R.font(15, bold=True), fill=R.YELLOW)
+    x += d.textlength(highlight, font=R.font(15, bold=True)) + 8
+    d.text((x, 230), suffix, font=R.font(12, bold=True), fill=R.WHITE)
 
     R.draw_footer(d, updated, device_status)
     return img
