@@ -109,6 +109,31 @@ def _wifi_bars(rssi):
     return 1
 
 
+def draw_footer(d, updated, device_status):
+    """通用底部状态条：左=电量/WiFi 五格，右=数据时间。"""
+    d.rectangle([0, H - 22, W, H], fill=BLACK)
+    y_base = H - 5
+    x = 10
+    if device_status:
+        pct = device_status.get("battery_pct")
+        if pct is not None:
+            d.text((x, H - 18), "电量", font=font(12, bold=True), fill=WHITE)
+            x += 30
+            b_bars = _battery_bars(pct)
+            x = _draw_bars(d, x, y_base - 4, b_bars, color=_bar_color(b_bars))
+            d.text((x + 1, H - 18), f"{pct:.0f}%", font=font(12, bold=True), fill=WHITE)
+            x += d.textlength(f"{pct:.0f}%", font=font(12, bold=True)) + 10
+        rssi = device_status.get("rssi")
+        if rssi is not None:
+            d.text((x, H - 18), "WiFi", font=font(12, bold=True), fill=WHITE)
+            x += 32
+            w_bars = _wifi_bars(rssi)
+            _draw_bars(d, x, y_base - 4, w_bars, color=_bar_color(w_bars))
+    right = f"数据 {updated}"
+    tw2 = d.textlength(right, font=font(12, bold=True))
+    d.text((W - 10 - tw2, H - 18), right, font=font(12, bold=True), fill=WHITE)
+
+
 def render(snapshot, device_status=None):
     """渲染 400×300 监控面板，返回精确四色 PIL 图像。
 
@@ -170,28 +195,8 @@ def render(snapshot, device_status=None):
         d.text((x0 + 15, y0 + 47), fmt_tokens(total), font=font(28, bold=True), fill=BLACK)
         d.text((x0 + 15, y0 + 85), sub, font=font(12, bold=True), fill=BLACK)
 
-    # 底部状态条：左=电量/WiFi 五格强度，右=数据时间
-    d.rectangle([0, H - 22, W, H], fill=BLACK)
-    if device_status:
-        y_base = H - 5
-        x = 10
-        pct = device_status.get("battery_pct")
-        if pct is not None:
-            d.text((x, H - 18), "电量", font=font(12, bold=True), fill=WHITE)
-            x += 30
-            b_bars = _battery_bars(pct)
-            x = _draw_bars(d, x, y_base - 4, b_bars, color=_bar_color(b_bars))
-            d.text((x + 1, H - 18), f"{pct:.0f}%", font=font(12, bold=True), fill=WHITE)
-            x += d.textlength(f"{pct:.0f}%", font=font(12, bold=True)) + 10
-        rssi = device_status.get("rssi")
-        if rssi is not None:
-            d.text((x, H - 18), "WiFi", font=font(12, bold=True), fill=WHITE)
-            x += 32
-            w_bars = _wifi_bars(rssi)
-            _draw_bars(d, x, y_base - 4, w_bars, color=_bar_color(w_bars))
-    right = f"数据 {updated}"
-    tw2 = d.textlength(right, font=font(12, bold=True))
-    d.text((W - 10 - tw2, H - 18), right, font=font(12, bold=True), fill=WHITE)
+    # 底部状态条
+    draw_footer(d, updated, device_status)
 
     return img
 
@@ -220,13 +225,22 @@ def render_or_fallback():
 
 
 def quantize_bwry(img):
-    """逐像素映射到最近调色板色（处理文字抗锯齿边缘）。"""
+    """逐像素映射到调色板色。
+
+    近灰像素（含文字抗锯齿边）单独走亮度阈值，阈值取 105：
+    黑底白字的小字笔画不会被吃掉，白底黑字仍保持实心。
+    """
     px = img.load()
     out = Image.new("RGB", (W, H), WHITE)
     op = out.load()
     for y in range(H):
         for x in range(W):
             r, g, b = px[x, y]
+            mx, mn = max(r, g, b), min(r, g, b)
+            if mx - mn <= 28:  # 近灰
+                luma = 0.299 * r + 0.587 * g + 0.114 * b
+                op[x, y] = WHITE if luma > 105 else BLACK
+                continue
             best, bd = BLACK, 1 << 30
             for c in PALETTE:
                 dist = (0.299 * (r - c[0]) ** 2 +
@@ -235,6 +249,38 @@ def quantize_bwry(img):
                 if dist < bd:
                     bd, best = dist, c
             op[x, y] = best
+    return out
+
+
+def quantize_bwry_dithered(img):
+    """Floyd–Steinberg 误差扩散到四色调色板（照片类内容用，观感更像图片）。"""
+    src = img.convert("RGB")
+    w, h = src.size
+    px = [[list(src.getpixel((x, y))) for x in range(w)] for y in range(h)]
+    out = Image.new("RGB", (w, h), WHITE)
+    op = out.load()
+
+    def nearest(r, g, b):
+        best, bd = BLACK, 1 << 30
+        for c in PALETTE:
+            dist = (0.299 * (r - c[0]) ** 2 + 0.587 * (g - c[1]) ** 2 + 0.114 * (b - c[2]) ** 2)
+            if dist < bd:
+                bd, best = dist, c
+        return best
+
+    for y in range(h):
+        for x in range(w):
+            r, g, b = px[y][x]
+            r = max(0, min(255, r)); g = max(0, min(255, g)); b = max(0, min(255, b))
+            c = nearest(r, g, b)
+            op[x, y] = c
+            er, eg, eb = r - c[0], g - c[1], b - c[2]
+            for dx, dy, f in ((1, 0, 7 / 16), (-1, 1, 3 / 16), (0, 1, 5 / 16), (1, 1, 1 / 16)):
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < w and 0 <= ny < h:
+                    px[ny][nx][0] += er * f
+                    px[ny][nx][1] += eg * f
+                    px[ny][nx][2] += eb * f
     return out
 
 
