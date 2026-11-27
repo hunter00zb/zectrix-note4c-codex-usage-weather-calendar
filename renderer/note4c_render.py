@@ -109,6 +109,84 @@ def _wifi_bars(rssi):
     return 1
 
 
+def draw_weather_icon(d, cx, cy, size, code):
+    """在 (cx, cy) 为中心、边长 size 的范围内画天气图标（四色墨水屏风格）。
+
+    0 晴 / 1-2 晴间多云 / 3 阴 / 45-48 雾 / 5x 毛毛雨 / 6x 雨 / 7x 雪 / 8x 阵雨 / 95+ 雷雨
+    """
+    s = size / 100.0
+    half = size / 2
+
+    def px(v):
+        return cx + v * s
+
+    def py(v):
+        return cy + v * s
+
+    def sun(offset_x=0, offset_y=0, r=26):
+        cxx, cyy = px(offset_x), py(offset_y)
+        rr = r * s
+        d.ellipse([cxx - rr - 4 * s, cyy - rr - 4 * s, cxx + rr + 4 * s, cyy + rr + 4 * s],
+                  outline=YELLOW, width=max(2, int(3 * s)))
+        d.ellipse([cxx - rr, cyy - rr, cxx + rr, cyy + rr], fill=YELLOW)
+        import math
+        for ang in range(0, 360, 45):
+            rad = math.radians(ang)
+            x1 = cxx + math.cos(rad) * (rr + 6 * s)
+            y1 = cyy + math.sin(rad) * (rr + 6 * s)
+            x2 = cxx + math.cos(rad) * (rr + 14 * s)
+            y2 = cyy + math.sin(rad) * (rr + 14 * s)
+            d.line([x1, y1, x2, y2], fill=YELLOW, width=max(2, int(3 * s)))
+
+    def cloud(offset_x=0, offset_y=0, color=BLACK, fill=WHITE):
+        # 三个圆 + 底部横条构成云朵
+        d.ellipse([px(-34 + offset_x), py(-6 + offset_y), px(-6 + offset_x), py(22 + offset_y)],
+                  fill=fill, outline=color, width=max(2, int(3 * s)))
+        d.ellipse([px(-14 + offset_x), py(-24 + offset_y), px(20 + offset_x), py(10 + offset_y)],
+                  fill=fill, outline=color, width=max(2, int(3 * s)))
+        d.ellipse([px(6 + offset_x), py(-8 + offset_y), px(34 + offset_x), py(20 + offset_y)],
+                  fill=fill, outline=color, width=max(2, int(3 * s)))
+        d.rectangle([px(-22 + offset_x), py(8 + offset_y), px(24 + offset_x), py(18 + offset_y)],
+                    fill=fill, outline=color, width=max(2, int(2 * s)))
+        d.line([px(-34 + offset_x), py(13 + offset_y), px(-22 + offset_x), py(13 + offset_y)],
+               fill=color, width=max(2, int(3 * s)))
+        d.line([px(24 + offset_x), py(13 + offset_y), px(34 + offset_x), py(13 + offset_y)],
+               fill=color, width=max(2, int(3 * s)))
+
+    def drops(count=3, color=BLACK, kind="rain"):
+        for i in range(count):
+            x = -14 + i * 14
+            if kind == "rain":
+                d.line([px(x), py(28), px(x - 4), py(40)], fill=color, width=max(2, int(3 * s)))
+            elif kind == "snow":
+                d.ellipse([px(x - 3), py(30), px(x + 3), py(36)], fill=color)
+            else:  # lightning
+                d.line([px(x), py(26), px(x - 6), py(36), px(x + 2), py(36), px(x - 4), py(46)],
+                       fill=RED, width=max(2, int(3 * s)))
+
+    if code in (0,):
+        sun()
+    elif code in (1, 2):
+        sun(-16, -14, 20)
+        cloud(6, 6)
+    elif code in (3, 45, 48):
+        cloud()
+    elif 51 <= code <= 57:
+        cloud(0, -4)
+        drops(3, BLACK, "rain")
+    elif 61 <= code <= 67 or 80 <= code <= 82:
+        cloud(0, -4)
+        drops(3, RED if code in (65, 67, 82) else BLACK, "rain")
+    elif 71 <= code <= 77 or 85 <= code <= 86:
+        cloud(0, -4)
+        drops(3, BLACK, "snow")
+    elif code >= 95:
+        cloud(0, -4)
+        drops(2, RED, "lightning")
+    else:
+        cloud()
+
+
 def draw_footer(d, updated, device_status):
     """通用底部状态条：左=电量/WiFi 五格，右=数据时间。"""
     d.rectangle([0, H - 22, W, H], fill=BLACK)
