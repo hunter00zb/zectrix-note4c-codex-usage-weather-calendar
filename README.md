@@ -169,22 +169,8 @@ ZECTRIX NOTE4C 的 Codex 用量、天气、日历三块面板，常显在 **ZECT
 
 ---
 
-## 4. 关键踩坑（都是实测血泪）
 
-| 现象 | 根因 | 解法 |
-|------|------|------|
-| 屏上四色面板刷不出来、也不报错 | 固件 BMP 通道按 1-bit 位图处理并只做 PARTIAL 刷新，四色屏上等于空操作 | 改走 **PNG 通道**（`png_to_epd → png_draw_4clr`，全刷） |
-| PNG 解码失败 `Four-color PNG decode failed: 8` | BYOS 默认输出**灰阶** PNG；失败后固件 framebuffer 未释放，后续刷新全部静默失效 | 自研 **4 色索引 PNG**（P 模式，调色板 = 黑/白/黄/红）；故障后按 RESET 针孔复位 |
-| 屏上突然出现 Bing 壁纸/XKCD 漫画 | 轮播列表被重置，设备在播其他插件 | 在 `state._select_next_playlist_entry` 中过滤，只留 Codex 条目 |
-| 每次轮询都整屏重刷 | filename token 含请求序号，永远在变 | token 改为内容签名，内容不变则跳过 |
-| 刷新后屏幕仍显示旧图 | 之前的失败路径污染了固件缓冲状态 | RESET 针孔硬复位清状态 |
-| 设备连不上服务器 | Mac 的 DHCP IP 从 `<MAC_IP>` 漂到 `<MAC_IP>` | 手工设静态 IP（`networksetup -setmanual`），并关闭「私有 Wi-Fi 地址」 |
-| 设备配网指向官方云，显示 MAC 未注册 | 新固件默认服务器是 `trmnl.app` | 擦 NVS（`0xE000, 0x5000`）重启进 captive portal，在高级页填自建服务器地址 |
-| WorkBuddy 沙箱内启动服务总报 `disk I/O error` | 沙箱拦截 SQLite journal 的创建/删除 | 改由 **launchd** 托管进程（完全脱离沙箱） |
-
----
-
-## 5. 部署步骤（从零复现）
+## 4. 部署步骤（从零复现）
 
 ```bash
 # 1) 基础服务
@@ -211,7 +197,7 @@ curl -s http://127.0.0.1:4567/api/display -H "fw-version: 1.8.19" | python3 -m j
 
 ---
 
-## 6. 运维手册
+## 5. 运维手册
 
 | 场景 | 操作 |
 |------|------|
@@ -227,7 +213,7 @@ curl -s http://127.0.0.1:4567/api/display -H "fw-version: 1.8.19" | python3 -m j
 
 ---
 
-## 7. 已知限制
+## 6. 已知限制
 
 - 设备 15 分钟上报一次，电量/WiFi 最多滞后 15 分钟
 - 四色面板每次全刷约 10-20 秒，刷新时屏幕会闪
@@ -235,7 +221,7 @@ curl -s http://127.0.0.1:4567/api/display -H "fw-version: 1.8.19" | python3 -m j
 - 「运行中·待确认」= 监控服务只能确认进程存活、无法确认后端握手
 - 本仓库不含固件二进制与设备备份（体积大且含设备私有信息），需自行从上游获取
 
-## 8. 目录结构
+## 7. 目录结构
 
 ```
 zectrix-note4c-codex-usage-weather-calendar/
