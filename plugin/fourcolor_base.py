@@ -75,7 +75,7 @@ class FourColorPanel(PluginBase):
 
         # 先做调色板量化（PIL 文字有抗锯齿灰边，必须映射到四色，否则灰边会被判成黑而吃掉笔画）
         import sys
-        renderer_dir = "/Users/hunter.zong/Work/Test Pj/NOTE4C/Codex 今日用量显示/renderer"
+        renderer_dir = "/Users/hunter.zong/Work/Test Pj/NOTE4C/Codex 用量-日历-天气显示/renderer"
         if renderer_dir not in sys.path:
             sys.path.insert(0, renderer_dir)
         import note4c_render as R
@@ -102,7 +102,7 @@ class FourColorPanel(PluginBase):
     def render_error_page(self, reason: str) -> Image.Image:
         from PIL import ImageDraw
         import sys
-        sys.path.insert(0, "/Users/hunter.zong/Work/Test Pj/NOTE4C/Codex 今日用量显示/renderer")
+        sys.path.insert(0, "/Users/hunter.zong/Work/Test Pj/NOTE4C/Codex 用量-日历-天气显示/renderer")
         import note4c_render as R
 
         img = Image.new("RGB", self.PANEL_SIZE, (255, 255, 255))
