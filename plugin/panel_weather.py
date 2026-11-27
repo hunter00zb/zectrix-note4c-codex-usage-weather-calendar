@@ -3,7 +3,7 @@
 结构：左侧大图标 + 超大温度；右侧日期/星期（红色强调）/天气/高低温；
 中部三张未来天气卡；底部黑色提醒条 + 设备状态条。
 
-数据源: open-meteo.com（免 API Key），默认长沙。
+数据源: open-meteo.com（免 API Key）。城市由 WEATHER_CITY / WEATHER_LAT / WEATHER_LON 指定，默认北京。
 环境变量覆盖: WEATHER_CITY / WEATHER_LAT / WEATHER_LON
 """
 
@@ -21,15 +21,16 @@ from .fourcolor_base import FourColorPanel
 
 logger = logging.getLogger(__name__)
 
-PROJECT_DIR = "/Users/hunter.zong/Work/Test Pj/NOTE4C/Codex 用量-日历-天气显示/renderer"
+PROJECT_DIR = os.getenv("NOTE4C_RENDERER_DIR") or os.path.abspath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "renderer"))
 if PROJECT_DIR not in sys.path:
     sys.path.insert(0, PROJECT_DIR)
 
 import note4c_render as R  # noqa: E402
 
-CITY = os.getenv("WEATHER_CITY", "长沙")
-LAT = os.getenv("WEATHER_LAT", "28.23")
-LON = os.getenv("WEATHER_LON", "112.94")
+CITY = os.getenv("WEATHER_CITY", "北京")
+LAT = os.getenv("WEATHER_LAT", "39.9042")
+LON = os.getenv("WEATHER_LON", "116.4074")
 
 WEEKDAYS = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
 
