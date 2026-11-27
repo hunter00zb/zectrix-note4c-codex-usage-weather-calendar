@@ -49,7 +49,7 @@
   - `POST /photo/show` — 立即显示指定图（**v6.5.9-20260705 无此接口，404**，刷新版固件后可用）
 - 推图命令：
   ```bash
-  cd "/Users/hunter.zong/Work/Test Pj/NOTE4C"
+  cd "/path/to/projects"
   python3 render_codex.py --device <设备IP> --push --meta "Codex用量监控"
   ```
   推上去的图在相册里，回相册页即可看到/翻页。
