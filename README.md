@@ -1,6 +1,6 @@
-# Codex 今日用量显示
+# Codex 用量-日历-天气显示
 
-把 Mac 上的 Codex 用量数据，常显在 **ZECTRIX NOTE4C 四色（黑/白/黄/红）墨水屏**上。
+把 Codex 用量、日历、天气三块面板，常显在 **ZECTRIX NOTE4C 四色（黑/白/黄/红）墨水屏**上。
 
 设备端跑 TRMNL 固件，每 15 分钟自动醒来，从局域网内的自建服务器拉一张 400×300 的四色面板；内容没变就不刷屏，保护墨水屏寿命。
 
@@ -238,7 +238,7 @@ curl -s http://127.0.0.1:4567/api/display -H "fw-version: 1.8.19" | python3 -m j
 ## 8. 目录结构
 
 ```
-Codex 今日用量显示/
+Codex 用量-日历-天气显示/
 ├── README.md               # 本文件
 ├── renderer/               # 渲染核心 + 独立推送脚本（Plan A 备用）
 ├── plugin/                 # BYOS 插件（CodexPlugin）
