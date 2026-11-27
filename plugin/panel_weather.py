@@ -21,7 +21,7 @@ from .fourcolor_base import FourColorPanel
 
 logger = logging.getLogger(__name__)
 
-PROJECT_DIR = "/Users/hunter.zong/Work/Test Pj/NOTE4C/Codex 今日用量显示/renderer"
+PROJECT_DIR = "/Users/hunter.zong/Work/Test Pj/NOTE4C/Codex 用量-日历-天气显示/renderer"
 if PROJECT_DIR not in sys.path:
     sys.path.insert(0, PROJECT_DIR)
 
