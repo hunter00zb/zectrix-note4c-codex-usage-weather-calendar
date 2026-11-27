@@ -3,7 +3,7 @@
 
 用法:
   python3 render_codex.py                    # 渲染，输出预览 PNG + 2bpp bin
-  python3 render_codex.py --device 192.168.2.50 --push --meta "Codex用量监控"
+  python3 render_codex.py --device <DEVICE_IP> --push --meta "Codex用量监控"
 """
 
 import argparse
